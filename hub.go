@@ -1,6 +1,9 @@
 package main
 
-import "math/rand"
+import (
+	"encoding/json"
+	"math/rand"
+)
 
 type Hub struct {
 	Rooms map[string]*Room
@@ -32,4 +35,9 @@ type GamePlayer struct {
 	Hand         Hand
 	StockPile    StockPile
 	DiscardPiles DiscardPiles
+}
+
+type Enveloppe struct {
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload,omitempty"`
 }

@@ -120,7 +120,7 @@ func TestDeal(t *testing.T) {
 	}
 
 	game.Deck.Shuffle(game.RNG)
-	game.Deal(StockPilesSize)
+	game.deal(StockPilesSize)
 
 	for _, player := range game.Players {
 		if len(player.Hand) != 5 {

@@ -48,7 +48,7 @@ func NewGame(players []Player, seed int64) (*Game, error) {
 	return g, nil
 }
 
-func (g *Game) Deal(stockPilesSize int) {
+func (g *Game) deal(stockPilesSize int) {
 	for range 5 {
 		for i := range g.Players {
 			g.Players[i].Hand = append(g.Players[i].Hand, g.Deck[0])
@@ -81,7 +81,7 @@ func (g *Game) draw(player *GamePlayer) {
 }
 
 func (g *Game) tryDrawCard() (Card, bool) {
-	card, err := g.Deck.Pop()
+	card, err := g.Deck.Shift()
 	if err == ErrDeckIsEmpty {
 		if len(g.CompletedPile) == 0 {
 			return card, false
@@ -134,6 +134,7 @@ func (g *Game) PlayFromHand(player *GamePlayer, cardIdx, pileIdx int) error {
 
 	player.Hand = slices.Delete(player.Hand, cardIdx, cardIdx+1)
 	g.BuildPiles[pileIdx] = append(pile, card)
+
 	return nil
 }
 
@@ -163,21 +164,82 @@ func (g *Game) PlayFromDiscard(player *GamePlayer, dpIdx, bpIdx int) error {
 		return ErrInvalidPileIndex
 	}
 
-	if len(dp) == 0 {
-		return ErrIllegalMove
-	}
-
 	bp, err := g.BuildPiles.pile(bpIdx)
 	if err != nil {
 		return ErrInvalidPileIndex
 	}
 
-	card := dp[len(dp)-1]
-	if !CanPlay(card, bp) {
+	card, err := dp.Top()
+	if !CanPlay(card, bp) || err != nil {
 		return ErrIllegalMove
 	}
 
-	player.DiscardPiles[dpIdx] = dp[0 : len(dp)-1]
+	player.DiscardPiles[dpIdx].Pop()
 	g.BuildPiles[bpIdx] = append(bp, card)
 	return nil
 }
+
+type GameView struct {
+	TurnIndex      int          `json:"turnIndex"`
+	BuildPiles     BuildPiles   `json:"buildPiles"`
+	DiscardPiles   DiscardPiles `json:"discardPiles"`
+	StockPileCount int          `json:"stockPileCount"`
+	StockPileCard  Card         `json:"stockPileTopCard"`
+	Opponents      []Opponent   `json:"opponnents"`
+}
+
+type Opponent struct {
+	PlayerID       string       `json:"playerId"`
+	HandCount      int          `json:"handCount"`
+	StockPileCount int          `json:"stockPileCount"`
+	StockPileCard  Card         `json:"stockPileCard"`
+	DiscardPiles   DiscardPiles `json:"discardPiles"`
+}
+
+func (g *Game) view(p *GamePlayer) GameView {
+	gv := GameView{
+		TurnIndex:      g.TurnIndex,
+		BuildPiles:     g.BuildPiles,
+		DiscardPiles:   p.DiscardPiles,
+		StockPileCount: len(p.StockPile),
+		StockPileCard:  p.StockPile[0],
+	}
+
+	for _, o := range g.Players {
+		gv.Opponents = append(gv.Opponents, Opponent{
+			PlayerID:       o.ID,
+			HandCount:      len(o.Hand),
+			StockPileCount: len(o.StockPile),
+			StockPileCard:  o.StockPile[0],
+			DiscardPiles:   o.DiscardPiles,
+		})
+	}
+
+	return gv
+}
+
+type PlayFromDiscardPayload struct {
+	DiscardPileIdx int `json:"discardPileIdx"`
+	BuildPileIdx   int `json:"buildPileIdx"`
+}
+
+type PlayFromStockPayload struct {
+	BuildPileIdx int `json:"buildPileIdx"`
+}
+
+type PlayFromHandPayload struct {
+	CardIdx      int `json:"cardIdx"`
+	BuildPileIdx int `json:"buildPileIdx"`
+}
+
+type DiscardPayload struct {
+	CardIdx        int `json:"cardIdx"`
+	DiscardPileIdx int `json:"discardPileIdx"`
+}
+
+const (
+	MsgTypePlayHand    = "playFromHand"
+	MsgTypePlayStock   = "playFromStock"
+	MsgTypePlayDiscard = "playFromDiscard"
+	MsgTypeDiscard     = "discard"
+)

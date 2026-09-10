@@ -18,6 +18,7 @@ type (
 var SkipBo Card = 0
 
 var (
+	ErrEmptyPile        = errors.New("pile is empty")
 	ErrDeckIsEmpty      = errors.New("deck is empty")
 	ErrInvalidPileIndex = errors.New("the pile index provided is out of bound")
 	ErrInvalidCardIndex = errors.New("the card index provided is out of bound")
@@ -45,7 +46,7 @@ func (d Deck) Shuffle(rng *rand.Rand) {
 	})
 }
 
-func (d *Deck) Pop() (Card, error) {
+func (d *Deck) Shift() (Card, error) {
 	size := len(*d)
 	if size == 0 {
 		return 0, ErrDeckIsEmpty
@@ -56,6 +57,25 @@ func (d *Deck) Pop() (Card, error) {
 	return c, nil
 }
 
+func (p *Pile) Pop() error {
+	size := len(*p)
+	if size == 0 {
+		return ErrEmptyPile
+	}
+
+	*p = (*p)[:size]
+	return nil
+}
+
+func (p *Pile) Top() (Card, error) {
+	size := len(*p)
+	if size == 0 {
+		return 0, ErrEmptyPile
+	}
+
+	return (*p)[size-1], nil
+}
+
 func CanPlay(card Card, pile Pile) bool {
 	pileSize := len(pile)
 	if pileSize >= 12 {
@@ -63,6 +83,10 @@ func CanPlay(card Card, pile Pile) bool {
 	}
 	nextValue := pileSize + 1
 	return nextValue == int(card) || card == SkipBo
+}
+
+func (p Pile) empty() bool {
+	return len(p) == 0
 }
 
 func (dp DiscardPiles) pile(idx int) (Pile, error) {
