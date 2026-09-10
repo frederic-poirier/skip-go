@@ -40,7 +40,7 @@ func NewGame(players []Player, seed int64) (*Game, error) {
 		g.Players = append(g.Players, GamePlayer{
 			player.ID,
 			Hand{},
-			StockPiles{},
+			StockPile{},
 			DiscardPiles{},
 		})
 	}
@@ -133,6 +133,26 @@ func (g *Game) PlayFromHand(player *GamePlayer, cardIdx, pileIdx int) error {
 	}
 
 	player.Hand = slices.Delete(player.Hand, cardIdx, cardIdx+1)
+	g.BuildPiles[pileIdx] = append(pile, card)
+	return nil
+}
+
+func (g *Game) PlayFromStock(player *GamePlayer, pileIdx int) error {
+	if len(player.StockPile) == 0 {
+		return ErrIllegalMove
+	}
+
+	card := player.StockPile[0]
+	pile, err := g.BuildPiles.pile(pileIdx)
+	if err != nil {
+		return err
+	}
+
+	if !CanPlay(card, pile) {
+		return ErrIllegalMove
+	}
+
+	player.StockPile = player.StockPile[1:]
 	g.BuildPiles[pileIdx] = append(pile, card)
 	return nil
 }

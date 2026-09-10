@@ -108,12 +108,12 @@ func TestDeal(t *testing.T) {
 			{
 				"1",
 				Hand{},
-				StockPiles{},
+				StockPile{},
 				DiscardPiles{},
 			}, {
 				"2",
 				Hand{},
-				StockPiles{},
+				StockPile{},
 				DiscardPiles{},
 			},
 		},
@@ -142,8 +142,8 @@ func TestDeal(t *testing.T) {
 }
 
 func TestDraw(t *testing.T) {
-	playerOne := GamePlayer{"0", Hand{1, 2, 3}, StockPiles{}, DiscardPiles{}}
-	playerTwo := GamePlayer{"1", Hand{1, 2, 3, 4, 5}, StockPiles{}, DiscardPiles{}}
+	playerOne := GamePlayer{"0", Hand{1, 2, 3}, StockPile{}, DiscardPiles{}}
+	playerTwo := GamePlayer{"1", Hand{1, 2, 3, 4, 5}, StockPile{}, DiscardPiles{}}
 	deck := Deck{1, 2, 3, 4, 5}
 
 	game := &Game{
@@ -263,7 +263,6 @@ func TestStartNextTurn(t *testing.T) {
 
 func TestPlayFromHand(t *testing.T) {
 	player := []GamePlayer{{
-		ID:   "0",
 		Hand: Hand{2, 5, 3, 0, 12},
 	}}
 
@@ -277,5 +276,41 @@ func TestPlayFromHand(t *testing.T) {
 	err := game.PlayFromHand(&game.Players[0], cardIdx, pileIdx)
 	if err != nil {
 		t.Errorf("playFromHand n'aurait pas du déclencher d'erreur, reçu: %v", err)
+	}
+}
+
+func TestPlayFromStock(t *testing.T) {
+	game := &Game{
+		Players:    []GamePlayer{{StockPile: StockPile{1, 0, 5, 2, 7}}},
+		BuildPiles: BuildPiles{Pile{}, Pile{1, 2, 3, 4}},
+	}
+
+	pileIdx := 0
+	err := game.PlayFromStock(&game.Players[0], pileIdx)
+	if err != nil {
+		t.Errorf("playFromStock ne devrait pas retourner d'erreur, reçu: %v", err)
+	}
+
+	if game.BuildPiles[pileIdx][0] != Card(1) {
+		t.Error("la BuildPile devrait avoir la première carte de la stockpile")
+	}
+
+	pileIdx = 1
+	err = game.PlayFromStock(&game.Players[0], pileIdx)
+	if err != nil {
+		t.Errorf("playFromStock ne devrait pas retourner d'erreur, reçu: %v", err)
+	}
+
+	if len(game.BuildPiles[pileIdx]) != 5 {
+		t.Error("la build pile devrait contenir 5 cartes")
+	}
+
+	if game.BuildPiles[pileIdx][len(game.BuildPiles[pileIdx])-1] != Card(0) {
+		t.Error("la build pile devrait contenir un SkipBo a la fin")
+	}
+
+	err = game.PlayFromStock(&game.Players[0], pileIdx)
+	if err == nil {
+		t.Errorf("playFromStock devrait retourner une erreur car le mouvement est illegale. \nbuildpile: %v \nstockpile: %v", game.BuildPiles[pileIdx], game.Players[0].StockPile)
 	}
 }

@@ -30,6 +30,6 @@ type Game struct {
 type GamePlayer struct {
 	ID           string
 	Hand         Hand
-	StockPile    StockPiles
+	StockPile    StockPile
 	DiscardPiles DiscardPiles
 }

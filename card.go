@@ -8,7 +8,7 @@ import (
 type (
 	DiscardPiles [4]Pile
 	BuildPiles   [4]Pile
-	StockPiles   Pile
+	StockPile    Pile
 	Pile         []Card
 	Deck         []Card
 	Hand         []Card
