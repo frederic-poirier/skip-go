@@ -102,12 +102,13 @@ func (g *Game) Discard(player *GamePlayer, cardIdx, pileIdx int) error {
 		return err
 	}
 
-	if err := validPileIndex(pileIdx); err != nil {
+	pile, err := player.DiscardPiles.pile(pileIdx)
+	if err != nil {
 		return err
 	}
 
 	player.Hand = slices.Delete(player.Hand, cardIdx, cardIdx+1)
-	player.DiscardPiles[pileIdx] = append(Pile{card}, player.DiscardPiles[pileIdx]...)
+	player.DiscardPiles[pileIdx] = append(Pile{card}, pile...)
 	return nil
 }
 
@@ -122,15 +123,16 @@ func (g *Game) PlayFromHand(player *GamePlayer, cardIdx, pileIdx int) error {
 		return err
 	}
 
-	if err := validPileIndex(pileIdx); err != nil {
+	pile, err := g.BuildPiles.pile(pileIdx)
+	if err != nil {
 		return err
 	}
 
-	if !CanPlay(card, g.BuildPiles[pileIdx]) {
+	if !CanPlay(card, pile) {
 		return ErrIllegalMove
 	}
 
 	player.Hand = slices.Delete(player.Hand, cardIdx, cardIdx+1)
-	g.BuildPiles[pileIdx] = append(g.BuildPiles[pileIdx], card)
+	g.BuildPiles[pileIdx] = append(pile, card)
 	return nil
 }

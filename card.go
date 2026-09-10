@@ -65,12 +65,20 @@ func CanPlay(card Card, pile Pile) bool {
 	return nextValue == int(card) || card == SkipBo
 }
 
-func validPileIndex(idx int) error {
+func (dp DiscardPiles) pile(idx int) (Pile, error) {
 	if idx < 0 || idx >= 4 {
-		return ErrInvalidPileIndex
+		return nil, ErrInvalidPileIndex
 	}
 
-	return nil
+	return dp[idx], nil
+}
+
+func (bp BuildPiles) pile(idx int) (Pile, error) {
+	if idx < 0 || idx >= 4 {
+		return nil, ErrInvalidPileIndex
+	}
+
+	return bp[idx], nil
 }
 
 func (h Hand) at(idx int) (Card, error) {
