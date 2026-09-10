@@ -314,3 +314,39 @@ func TestPlayFromStock(t *testing.T) {
 		t.Errorf("playFromStock devrait retourner une erreur car le mouvement est illegale. \nbuildpile: %v \nstockpile: %v", game.BuildPiles[pileIdx], game.Players[0].StockPile)
 	}
 }
+
+func TestPlayFromDiscard(t *testing.T) {
+	game := &Game{
+		Players: []GamePlayer{{DiscardPiles: DiscardPiles{
+			{0, 3, 5},
+			{},
+		}}},
+		BuildPiles: BuildPiles{
+			{1, 2, 3, 4},
+			{},
+		},
+	}
+
+	dpIdx := 0
+	bpIdx := 0
+	err := game.PlayFromDiscard(&game.Players[0], dpIdx, bpIdx)
+	if err != nil {
+		t.Errorf("play-from-discard ne devrait pas déclencher d'erreur, reçu: %v", err)
+	}
+
+	if game.BuildPiles[bpIdx][len(game.BuildPiles[bpIdx])-1] != 5 {
+		t.Errorf("la build pile devrait avoir la dernière carte de la discard pile sélectionner")
+	}
+
+	bpIdx = 1
+	err = game.PlayFromDiscard(&game.Players[0], dpIdx, bpIdx)
+	if err != ErrIllegalMove {
+		t.Error("play-from-discard ne devrait pas accepter une carte 3 sur une empty build pile")
+	}
+
+	dpIdx = 1
+	err = game.PlayFromDiscard(&game.Players[0], dpIdx, bpIdx)
+	if err != ErrIllegalMove {
+		t.Error("play-from-discard ne devrait pas accepter l'action sur une empty discard pile")
+	}
+}

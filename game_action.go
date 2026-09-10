@@ -156,3 +156,28 @@ func (g *Game) PlayFromStock(player *GamePlayer, pileIdx int) error {
 	g.BuildPiles[pileIdx] = append(pile, card)
 	return nil
 }
+
+func (g *Game) PlayFromDiscard(player *GamePlayer, dpIdx, bpIdx int) error {
+	dp, err := player.DiscardPiles.pile(dpIdx)
+	if err != nil {
+		return ErrInvalidPileIndex
+	}
+
+	if len(dp) == 0 {
+		return ErrIllegalMove
+	}
+
+	bp, err := g.BuildPiles.pile(bpIdx)
+	if err != nil {
+		return ErrInvalidPileIndex
+	}
+
+	card := dp[len(dp)-1]
+	if !CanPlay(card, bp) {
+		return ErrIllegalMove
+	}
+
+	player.DiscardPiles[dpIdx] = dp[0 : len(dp)-1]
+	g.BuildPiles[bpIdx] = append(bp, card)
+	return nil
+}
