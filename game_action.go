@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"math/rand"
+	"slices"
 )
 
 const (
@@ -15,6 +16,7 @@ var (
 	ErrNotEnoughPlayer = errors.New("game need atleast 2 players")
 	ErrTooMuchPlayer   = errors.New("game cannot have more than 6 players")
 	ErrDrawHandFull    = errors.New("cannot draw, player's hand is already full")
+	ErrIllegalMove     = errors.New("move is not legal")
 )
 
 func NewGame(players []Player, seed int64) (*Game, error) {
@@ -62,29 +64,73 @@ func (g *Game) Deal(stockPilesSize int) {
 	}
 }
 
-func (g *Game) Draw(player *GamePlayer) error {
+func (g *Game) draw(player *GamePlayer) {
 	handCardCount := len(player.Hand)
 	if handCardCount == MaxHandCard {
-		return ErrDrawHandFull
+		return
 	}
 
 	for range MaxHandCard - handCardCount {
-		card, err := g.Deck.Pop()
-		if err == ErrDeckIsEmpty {
-			g.Deck = Deck(g.CompletedPile)
-			g.Deck.Shuffle(g.RNG)
-			card, err := g.Deck.Pop()
-			if err != nil {
-				return err
-			}
-
-			player.Hand = append(player.Hand, card)
-		} else if err != nil {
-			return err
+		card, ok := g.tryDrawCard()
+		if !ok {
+			return
 		}
 
 		player.Hand = append(player.Hand, card)
 	}
+}
 
+func (g *Game) tryDrawCard() (Card, bool) {
+	card, err := g.Deck.Pop()
+	if err == ErrDeckIsEmpty {
+		if len(g.CompletedPile) == 0 {
+			return card, false
+		}
+
+		g.Deck = Deck(g.CompletedPile)
+		g.Deck.Shuffle(g.RNG)
+		g.CompletedPile = Pile{}
+		return g.tryDrawCard()
+	}
+
+	return card, true
+}
+
+func (g *Game) Discard(player *GamePlayer, cardIdx, pileIdx int) error {
+	card, err := player.Hand.at(cardIdx)
+	if err != nil {
+		return err
+	}
+
+	if err := validPileIndex(pileIdx); err != nil {
+		return err
+	}
+
+	player.Hand = slices.Delete(player.Hand, cardIdx, cardIdx+1)
+	player.DiscardPiles[pileIdx] = append(Pile{card}, player.DiscardPiles[pileIdx]...)
+	return nil
+}
+
+func (g *Game) startNextTurn() {
+	g.TurnIndex = (g.TurnIndex + 1) % len(g.Players)
+	g.draw(&g.Players[g.TurnIndex])
+}
+
+func (g *Game) PlayFromHand(player *GamePlayer, cardIdx, pileIdx int) error {
+	card, err := player.Hand.at(cardIdx)
+	if err != nil {
+		return err
+	}
+
+	if err := validPileIndex(pileIdx); err != nil {
+		return err
+	}
+
+	if !CanPlay(card, g.BuildPiles[pileIdx]) {
+		return ErrIllegalMove
+	}
+
+	player.Hand = slices.Delete(player.Hand, cardIdx, cardIdx+1)
+	g.BuildPiles[pileIdx] = append(g.BuildPiles[pileIdx], card)
 	return nil
 }

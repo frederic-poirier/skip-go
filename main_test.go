@@ -150,12 +150,9 @@ func TestDraw(t *testing.T) {
 		Deck:    deck,
 		Players: []GamePlayer{playerOne, playerTwo},
 	}
-	firstPlayer := game.Players[0]
 
-	err := game.Draw(&firstPlayer)
-	if err != nil {
-		t.Errorf("reçu %v mais attendais aucune erreur", err)
-	}
+	firstPlayer := game.Players[0]
+	game.draw(&firstPlayer)
 
 	if len(firstPlayer.Hand) != 5 {
 		t.Errorf("la main doit posséder 5 cartes après l'invocation de draw, reçu %v ", len(firstPlayer.Hand))
@@ -164,6 +161,121 @@ func TestDraw(t *testing.T) {
 	if len(game.Deck) != 3 {
 		t.Errorf("deck size is not matching %v", len(game.Deck))
 	}
+}
 
-	t.Log(firstPlayer.Hand, game.Deck)
+func TestCanPlay(t *testing.T) {
+	t.Run("jouer sur une pile vide", func(t *testing.T) {
+		card := Card(1)
+		pile := Pile{}
+		if !CanPlay(card, pile) {
+			t.Errorf("CanPlay devrait accepter la carte 1 ou SkipBo sur un pile empty")
+		}
+	})
+
+	t.Run("jouer sur une pile complète", func(t *testing.T) {
+		card := Card(12)
+		pile := Pile{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+		if CanPlay(card, pile) {
+			t.Errorf("CanPlay ne devrait pas accepter de carte sur une pile pleine")
+		}
+	})
+
+	t.Run("jouer une carte inférieur", func(t *testing.T) {
+		card := Card(5)
+		pile := Pile{1, 2, 3, 4, 5}
+		if CanPlay(card, pile) {
+			t.Errorf("CanPlay ne devrait pas accepter une carte inférieur à la dernière carte de la pile")
+		}
+	})
+
+	t.Run("jouer une carte supérieur", func(t *testing.T) {
+		card := Card(4)
+		pile := Pile{1, 2}
+		if CanPlay(card, pile) {
+			t.Error("CanPlay ne devrait pas accepter de carte supérieur à la dernière carte de la pile")
+		}
+	})
+
+	t.Run("jouer un skipbo", func(t *testing.T) {
+		card := SkipBo
+		pile := Pile{0, 0, 3, 4}
+		if !CanPlay(card, pile) {
+			t.Error("CanPlay devrait accepter SkipBo en tout temps excepter lorsque la pile est pleine.")
+		}
+	})
+}
+
+func TestDiscard(t *testing.T) {
+	players := []GamePlayer{{
+		ID:           "0",
+		Hand:         Hand{2, 5, 3, 0, 12},
+		DiscardPiles: DiscardPiles{},
+	}, {
+		ID:           "1",
+		Hand:         Hand{4, 2, 3},
+		DiscardPiles: DiscardPiles{},
+	}}
+
+	game := &Game{
+		TurnIndex: 0,
+		Deck:      Deck{},
+		Players:   players,
+	}
+
+	player := &game.Players[0]
+	cardIdx := 2
+	pileIdx := 2
+
+	game.Discard(player, cardIdx, pileIdx)
+
+	if len(player.Hand) != 4 {
+		t.Error("discard devrait retirer une carte de la main du joueur")
+	}
+
+	if player.DiscardPiles[pileIdx][0] != 3 {
+		t.Error("discard devrait déplacer la carte de la main vers la DiscardPile indiquer")
+	}
+}
+
+func TestStartNextTurn(t *testing.T) {
+	players := []GamePlayer{{
+		Hand: Hand{2, 5, 3, 0, 12},
+	}, {
+		Hand: Hand{4, 2, 3},
+	}}
+
+	game := &Game{
+		TurnIndex: 0,
+		Deck:      Deck{1, 2, 3, 4, 5},
+		Players:   players,
+	}
+
+	game.startNextTurn()
+
+	if game.TurnIndex == 0 {
+		t.Error("TurnIndex devrait changer")
+	}
+
+	if len(game.Players[1].Hand) != 5 {
+		t.Error("The next player should have 5 cards in is hand.")
+	}
+}
+
+func TestPlayFromHand(t *testing.T) {
+	player := []GamePlayer{{
+		ID:   "0",
+		Hand: Hand{2, 5, 3, 0, 12},
+	}}
+
+	game := &Game{
+		Players:    player,
+		BuildPiles: BuildPiles{},
+	}
+
+	cardIdx := 3
+	pileIdx := 2
+	err := game.PlayFromHand(&game.Players[0], cardIdx, pileIdx)
+	if err != nil {
+		t.Errorf("playFromHand n'aurait pas du déclencher d'erreur, reçu: %v", err)
+	}
 }

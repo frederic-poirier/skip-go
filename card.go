@@ -17,7 +17,11 @@ type (
 
 var SkipBo Card = 0
 
-var ErrDeckIsEmpty = errors.New("deck is empty")
+var (
+	ErrDeckIsEmpty      = errors.New("deck is empty")
+	ErrInvalidPileIndex = errors.New("the pile index provided is out of bound")
+	ErrInvalidCardIndex = errors.New("the card index provided is out of bound")
+)
 
 func NewDeck() Deck {
 	d := Deck{}
@@ -50,4 +54,29 @@ func (d *Deck) Pop() (Card, error) {
 	c := (*d)[0]
 	*d = (*d)[1:]
 	return c, nil
+}
+
+func CanPlay(card Card, pile Pile) bool {
+	pileSize := len(pile)
+	if pileSize >= 12 {
+		return false
+	}
+	nextValue := pileSize + 1
+	return nextValue == int(card) || card == SkipBo
+}
+
+func validPileIndex(idx int) error {
+	if idx < 0 || idx >= 4 {
+		return ErrInvalidPileIndex
+	}
+
+	return nil
+}
+
+func (h Hand) at(idx int) (Card, error) {
+	if idx < 0 || idx >= len(h) {
+		return 0, ErrInvalidCardIndex
+	}
+
+	return h[idx], nil
 }
