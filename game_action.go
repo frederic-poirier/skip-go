@@ -17,6 +17,7 @@ var (
 	ErrTooMuchPlayer   = errors.New("game cannot have more than 6 players")
 	ErrDrawHandFull    = errors.New("cannot draw, player's hand is already full")
 	ErrIllegalMove     = errors.New("move is not legal")
+	ErrPlayerNotFound  = errors.New("player could not be found")
 )
 
 func NewGame(players []Player, seed int64) (*Game, error) {
@@ -177,6 +178,20 @@ func (g *Game) PlayFromDiscard(player *GamePlayer, dpIdx, bpIdx int) error {
 	player.DiscardPiles[dpIdx].Pop()
 	g.BuildPiles[bpIdx] = append(bp, card)
 	return nil
+}
+
+func (g *Game) findPlayerTurn() *GamePlayer {
+	return &g.Players[g.TurnIndex]
+}
+
+func (g *Game) score() int {
+	score := 25
+	for _, p := range g.Players {
+		// player that win should not have card
+		// so the score would not add up.
+		score += len(p.StockPile) * 5
+	}
+	return score
 }
 
 type GameView struct {
