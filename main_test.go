@@ -34,11 +34,11 @@ func TestNewDeck(t *testing.T) {
 func TestNewGame(t *testing.T) {
 	t.Run("New Game: enough player", func(t *testing.T) {
 		players := []Player{
-			{"1", 0, "fred"},
-			{"0", 0, "em"},
+			{},
+			{},
 		}
 
-		resultat, err := NewGame(players, time.Now().UnixNano())
+		resultat, err := NewGame(players, 1)
 		if err != nil {
 			t.Fatalf("erreur inattendue: %v", err)
 		}
@@ -53,11 +53,8 @@ func TestNewGame(t *testing.T) {
 	})
 
 	t.Run("New Game: not enough player", func(t *testing.T) {
-		players := []Player{
-			{"1", 0, "fred"},
-		}
-
-		_, err := NewGame(players, time.Now().UnixNano())
+		players := []Player{{}}
+		_, err := NewGame(players, 1)
 		attendu := ErrNotEnoughPlayer
 
 		if err != attendu {
@@ -67,13 +64,13 @@ func TestNewGame(t *testing.T) {
 
 	t.Run("New Game: too much player", func(t *testing.T) {
 		players := []Player{
-			{"0", 0, "fred"},
-			{"1", 0, "em"},
-			{"2", 0, "derf"},
-			{"3", 0, "me"},
-			{"4", 0, "dref"},
-			{"5", 0, "redf"},
-			{"6", 0, "fedr"},
+			{},
+			{},
+			{},
+			{},
+			{},
+			{},
+			{},
 		}
 
 		_, err := NewGame(players, time.Now().UnixNano())

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"math/rand"
 	"slices"
@@ -198,6 +199,7 @@ type GameView struct {
 	TurnIndex      int          `json:"turnIndex"`
 	BuildPiles     BuildPiles   `json:"buildPiles"`
 	DiscardPiles   DiscardPiles `json:"discardPiles"`
+	Hand           Hand         `json:"hand"`
 	StockPileCount int          `json:"stockPileCount"`
 	StockPileCard  Card         `json:"stockPileTopCard"`
 	Opponents      []Opponent   `json:"opponnents"`
@@ -211,10 +213,11 @@ type Opponent struct {
 	DiscardPiles   DiscardPiles `json:"discardPiles"`
 }
 
-func (g *Game) view(p *GamePlayer) GameView {
+func (g *Game) view(p GamePlayer) GameView {
 	gv := GameView{
 		TurnIndex:      g.TurnIndex,
 		BuildPiles:     g.BuildPiles,
+		Hand:           p.Hand,
 		DiscardPiles:   p.DiscardPiles,
 		StockPileCount: len(p.StockPile),
 		StockPileCard:  p.StockPile[0],
@@ -258,3 +261,65 @@ const (
 	MsgTypePlayDiscard = "playFromDiscard"
 	MsgTypeDiscard     = "discard"
 )
+
+var (
+	ErrNotPlayerTurn   = errors.New("is not player's turn")
+	ErrMsgTypeNotFound = errors.New("msg type could not be found")
+)
+
+func GameActionRouter(g *Game, player Player, m Message) error {
+	gamePlayer := g.findPlayerTurn()
+	if gamePlayer.ID != player.ID {
+		return ErrNotPlayerTurn
+	}
+
+	switch m.Type {
+	case MsgTypePlayHand:
+		p := PlayFromHandPayload{}
+		if err := json.Unmarshal(m.Payload, &p); err != nil {
+			return err
+		}
+		if err := g.PlayFromHand(gamePlayer, p.CardIdx, p.BuildPileIdx); err != nil {
+			return err
+		}
+		if len(gamePlayer.Hand) == 0 {
+			g.draw(gamePlayer)
+		}
+		return nil
+
+	case MsgTypePlayDiscard:
+		p := PlayFromDiscardPayload{}
+		if err := json.Unmarshal(m.Payload, &p); err != nil {
+			return err
+		}
+		return g.PlayFromDiscard(gamePlayer, p.DiscardPileIdx, p.BuildPileIdx)
+
+	case MsgTypePlayStock:
+		p := PlayFromStockPayload{}
+		if err := json.Unmarshal(m.Payload, &p); err != nil {
+			return err
+		}
+		if err := g.PlayFromStock(gamePlayer, p.BuildPileIdx); err != nil {
+			return err
+		}
+		if len(gamePlayer.StockPile) == 0 {
+			player.Score += g.score()
+			g = nil
+		}
+		return nil
+
+	case MsgTypeDiscard:
+		p := DiscardPayload{}
+		if err := json.Unmarshal(m.Payload, &p); err != nil {
+			return err
+		}
+		if err := g.Discard(gamePlayer, p.CardIdx, p.DiscardPileIdx); err != nil {
+			return err
+		}
+
+		g.startNextTurn()
+		return nil
+	default:
+		return ErrMsgTypeNotFound
+	}
+}
