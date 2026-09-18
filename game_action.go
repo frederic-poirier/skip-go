@@ -36,6 +36,7 @@ func NewGame(players []Player, seed int64) (*Game, error) {
 		RNG:           rand.New(rand.NewSource(seed)),
 		BuildPiles:    BuildPiles{},
 		CompletedPile: Pile{},
+		WinnerID:      "",
 	}
 
 	for _, player := range players {
@@ -48,6 +49,12 @@ func NewGame(players []Player, seed int64) (*Game, error) {
 	}
 
 	return g, nil
+}
+
+func (g *Game) Start() {
+	g.Deck.Shuffle(g.RNG)
+	g.deal(10)
+	g.startNextTurn()
 }
 
 func (g *Game) deal(stockPilesSize int) {
@@ -98,6 +105,16 @@ func (g *Game) tryDrawCard() (Card, bool) {
 	return card, true
 }
 
+func (g *Game) playOnToBuildPile(pile *Pile, card Card) error {
+	*pile = append(*pile, card)
+	if len(*pile) == 12 {
+		g.CompletedPile = append(g.CompletedPile, *pile...)
+		*pile = Pile{}
+	}
+
+	return nil
+}
+
 func (g *Game) Discard(player *GamePlayer, cardIdx, pileIdx int) error {
 	card, err := player.Hand.at(cardIdx)
 	if err != nil {
@@ -135,8 +152,7 @@ func (g *Game) PlayFromHand(player *GamePlayer, cardIdx, pileIdx int) error {
 	}
 
 	player.Hand = slices.Delete(player.Hand, cardIdx, cardIdx+1)
-	g.BuildPiles[pileIdx] = append(pile, card)
-
+	g.playOnToBuildPile(&g.BuildPiles[pileIdx], card)
 	return nil
 }
 
@@ -156,7 +172,12 @@ func (g *Game) PlayFromStock(player *GamePlayer, pileIdx int) error {
 	}
 
 	player.StockPile = player.StockPile[1:]
-	g.BuildPiles[pileIdx] = append(pile, card)
+	g.playOnToBuildPile(&g.BuildPiles[pileIdx], card)
+
+	if len(player.StockPile) == 0 {
+		g.WinnerID = player.ID
+	}
+
 	return nil
 }
 
@@ -177,12 +198,16 @@ func (g *Game) PlayFromDiscard(player *GamePlayer, dpIdx, bpIdx int) error {
 	}
 
 	player.DiscardPiles[dpIdx].Pop()
-	g.BuildPiles[bpIdx] = append(bp, card)
+	g.playOnToBuildPile(&g.BuildPiles[bpIdx], card)
 	return nil
 }
 
 func (g *Game) findPlayerTurn() *GamePlayer {
 	return &g.Players[g.TurnIndex]
+}
+
+func (g *Game) IsOver() bool {
+	return g.WinnerID != ""
 }
 
 func (g *Game) score() int {
@@ -256,10 +281,10 @@ type DiscardPayload struct {
 }
 
 const (
-	MsgTypePlayHand    = "playFromHand"
-	MsgTypePlayStock   = "playFromStock"
-	MsgTypePlayDiscard = "playFromDiscard"
-	MsgTypeDiscard     = "discard"
+	ActionPlayFromHand    = "playFromHand"
+	ActionPlayFromStock   = "playFromStock"
+	ActionPlayFromDiscard = "playFromDiscard"
+	ActionDiscard         = "discard"
 )
 
 var (
@@ -267,16 +292,16 @@ var (
 	ErrMsgTypeNotFound = errors.New("msg type could not be found")
 )
 
-func GameActionRouter(g *Game, player Player, m Message) error {
+func GameActionRouter(g *Game, player *Player, action string, payload json.RawMessage) error {
 	gamePlayer := g.findPlayerTurn()
 	if gamePlayer.ID != player.ID {
 		return ErrNotPlayerTurn
 	}
 
-	switch m.Type {
-	case MsgTypePlayHand:
+	switch action {
+	case ActionPlayFromHand:
 		p := PlayFromHandPayload{}
-		if err := json.Unmarshal(m.Payload, &p); err != nil {
+		if err := json.Unmarshal(payload, &p); err != nil {
 			return err
 		}
 		if err := g.PlayFromHand(gamePlayer, p.CardIdx, p.BuildPileIdx); err != nil {
@@ -287,16 +312,16 @@ func GameActionRouter(g *Game, player Player, m Message) error {
 		}
 		return nil
 
-	case MsgTypePlayDiscard:
+	case ActionPlayFromDiscard:
 		p := PlayFromDiscardPayload{}
-		if err := json.Unmarshal(m.Payload, &p); err != nil {
+		if err := json.Unmarshal(payload, &p); err != nil {
 			return err
 		}
 		return g.PlayFromDiscard(gamePlayer, p.DiscardPileIdx, p.BuildPileIdx)
 
-	case MsgTypePlayStock:
+	case ActionPlayFromStock:
 		p := PlayFromStockPayload{}
-		if err := json.Unmarshal(m.Payload, &p); err != nil {
+		if err := json.Unmarshal(payload, &p); err != nil {
 			return err
 		}
 		if err := g.PlayFromStock(gamePlayer, p.BuildPileIdx); err != nil {
@@ -308,9 +333,9 @@ func GameActionRouter(g *Game, player Player, m Message) error {
 		}
 		return nil
 
-	case MsgTypeDiscard:
+	case ActionDiscard:
 		p := DiscardPayload{}
-		if err := json.Unmarshal(m.Payload, &p); err != nil {
+		if err := json.Unmarshal(payload, &p); err != nil {
 			return err
 		}
 		if err := g.Discard(gamePlayer, p.CardIdx, p.DiscardPileIdx); err != nil {
