@@ -1,76 +1,64 @@
-import { useParams } from "@solidjs/router";
-import { createSignal, For, onSettled, Show } from "solid-js";
-
-type PlayerView = {
-    id: string;
-    score: number;
-    isReady: boolean;
-};
-
-type RoomState = {
-    roomId: string;
-    id: string;
-    isReady: boolean;
-    players: PlayerView[];
-};
-
-type ServerMessage = {
-    type: string;
-    payload?: RoomState;
-};
+import { useNavigate, useParams } from "@solidjs/router";
+import { For, Show } from "solid-js";
+import { createRoomSocket, GameState, OutgoingMessage, PlayerView } from "../websocket";
 
 export default function Room() {
-    const [connectionState, setConnectionState] = createSignal("déconnecté");
-    const [roomState, setRoomState] = createSignal<RoomState>();
     const params = useParams();
+    const navigate = useNavigate();
+    if (params.room == undefined) {
+        navigate("/");
+    }
 
-    onSettled(() => {
-        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        const ws = new WebSocket(`${protocol}//${location.host}/room/${params.room}`);
-
-        ws.onopen = () => setConnectionState("connecté");
-        ws.onmessage = (e) => {
-            const msg = JSON.parse(e.data as string) as ServerMessage;
-            if (msg.type === "room-state" && msg.payload) {
-                setRoomState({
-                    ...msg.payload,
-                    players: msg.payload.players ?? [],
-                });
-            }
-        };
-        ws.onerror = () => console.error("WS error");
-        ws.onclose = () => {
-            setConnectionState("déconnecté");
-            setRoomState(undefined);
-        };
-
-        return () => ws.close();
-    });
+    const roomSocket = createRoomSocket(params.room!);
 
     return (
         <div>
-            <p>{connectionState()}</p>
+            <p>{roomSocket.connectionState() ? "on" : "off"}</p>
             <h1>Room {params.room}</h1>
-            <Show when={roomState()} fallback={<p>En attente du room-state…</p>}>
+            <Show when={roomSocket.roomState()} fallback={<p>En attente du room-state…</p>}>
                 {(state) => (
                     <>
-                        <p>
-                            Toi ({state().id}) — {state().isReady ? "prêt" : "pas prêt"}
-                        </p>
-                        <ul>
-                            <For each={state().players} fallback={<li>Aucun autre joueur</li>}>
-                                {(player) => (
-                                    <li>
-                                        <p>{player.id}</p>
-                                        <p>Score: {player.score}</p>
-                                        <p>{player.isReady ? "prêt à jouer" : "pas prêt à jouer"}</p>
-                                    </li>
-                                )}
-                            </For>
-                        </ul>
+                        <PlayerInfo
+                            send={(msg) => roomSocket.send(msg)}
+                            id={state().id}
+                            isHost={state().isHost}
+                        />
+                        <OpponentList opponents={state().players} />
+                        <Show when={state().game}>{(g) => <Game game={g()} />}</Show>
                     </>
                 )}
             </Show>
         </div>
+    );
+}
+
+function Game(props: { game: GameState }) {
+    return <p>{JSON.stringify(props.game)}</p>;
+}
+
+function PlayerInfo(props: { id: string; isHost: boolean; send: (msg: OutgoingMessage) => void }) {
+    const start = () => props.send({ type: "lobby.start" });
+
+    return (
+        <Show when={props.isHost} fallback={<p>{props.id}</p>}>
+            <p>{props.id} HOST</p>
+            <button onClick={start}>Start game</button>
+        </Show>
+    );
+}
+
+function OpponentList(props: { opponents: PlayerView[] }) {
+    return (
+        <ul>
+            <For each={props.opponents} fallback={<li>Aucun autre joueur</li>}>
+                {(player) => (
+                    <li>
+                        <p>{player.id}</p>
+                        <p>Score: {player.score}</p>
+                        <p>Connect: {player.connected ? "oui" : "non"}</p>
+                    </li>
+                )}
+            </For>
+        </ul>
     );
 }

@@ -231,7 +231,7 @@ type GameView struct {
 }
 
 type Opponent struct {
-	PlayerID       string       `json:"playerId"`
+	PlayerID       playerID     `json:"playerId"`
 	HandCount      int          `json:"handCount"`
 	StockPileCount int          `json:"stockPileCount"`
 	StockPileCard  Card         `json:"stockPileCard"`
@@ -249,6 +249,10 @@ func (g *Game) view(p GamePlayer) GameView {
 	}
 
 	for _, o := range g.Players {
+		if o.ID == p.ID {
+			continue
+		}
+
 		gv.Opponents = append(gv.Opponents, Opponent{
 			PlayerID:       o.ID,
 			HandCount:      len(o.Hand),

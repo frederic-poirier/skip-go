@@ -23,7 +23,7 @@ func main() {
 			return err
 		}
 
-		PlayerID := cookie.Value
+		PlayerID := playerID(cookie.Value)
 		if len(PlayerID) == 0 {
 			return errors.New("invalid id")
 		}
@@ -32,7 +32,7 @@ func main() {
 		log.Printf("new room running")
 		go room.run()
 
-		return c.JSON(http.StatusOK, map[string]string{"roomID": room.ID})
+		return c.JSON(http.StatusOK, map[string]string{"roomID": string(room.ID)})
 	})
 
 	e.GET("/room/:id", func(c *echo.Context) error {
@@ -41,12 +41,12 @@ func main() {
 			return err
 		}
 
-		playerID := cookie.Value
+		playerID := playerID(cookie.Value)
 		if playerID == "" {
 			return errors.New("invalid id")
 		}
 
-		roomID := c.Param("id")
+		roomID := roomID(c.Param("id"))
 		if roomID == "" {
 			return errors.New("invalid roomID")
 		}
