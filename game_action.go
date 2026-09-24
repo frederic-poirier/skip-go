@@ -34,7 +34,7 @@ func NewGame(players []Player, seed int64) (*Game, error) {
 		Deck:          NewDeck(),
 		TurnIndex:     0,
 		RNG:           rand.New(rand.NewSource(seed)),
-		BuildPiles:    BuildPiles{},
+		BuildPiles:    BuildPiles{Pile{}, Pile{}, Pile{}, Pile{}},
 		CompletedPile: Pile{},
 		WinnerID:      "",
 	}
@@ -44,7 +44,7 @@ func NewGame(players []Player, seed int64) (*Game, error) {
 			player.ID,
 			Hand{},
 			StockPile{},
-			DiscardPiles{},
+			DiscardPiles{Pile{}, Pile{}, Pile{}, Pile{}},
 		})
 	}
 
@@ -202,6 +202,15 @@ func (g *Game) PlayFromDiscard(player *GamePlayer, dpIdx, bpIdx int) error {
 	return nil
 }
 
+func (g *Game) playerByID(id playerID) (player *GamePlayer, ok bool) {
+	for i := range g.Players {
+		if g.Players[i].ID == id {
+			return &g.Players[i], true
+		}
+	}
+	return nil, false
+}
+
 func (g *Game) findPlayerTurn() *GamePlayer {
 	return &g.Players[g.TurnIndex]
 }
@@ -221,7 +230,7 @@ func (g *Game) score() int {
 }
 
 type GameView struct {
-	TurnIndex      int          `json:"turnIndex"`
+	IsPlayerTurn   bool         `json:"isPlayerTurn"`
 	BuildPiles     BuildPiles   `json:"buildPiles"`
 	DiscardPiles   DiscardPiles `json:"discardPiles"`
 	Hand           Hand         `json:"hand"`
@@ -240,7 +249,7 @@ type Opponent struct {
 
 func (g *Game) view(p GamePlayer) GameView {
 	gv := GameView{
-		TurnIndex:      g.TurnIndex,
+		IsPlayerTurn:   p.ID == g.findPlayerTurn().ID,
 		BuildPiles:     g.BuildPiles,
 		Hand:           p.Hand,
 		DiscardPiles:   p.DiscardPiles,

@@ -274,6 +274,9 @@ func (r *Room) Register(client *Client) {
 
 		r.Players[player.ID] = player
 		r.broadcastRoomView()
+		if r.Game != nil {
+			r.sendGameView(player)
+		}
 		return
 	}
 
@@ -283,6 +286,9 @@ func (r *Room) Register(client *Client) {
 
 	player.Client = client
 	r.broadcastRoomView()
+	if r.Game != nil {
+		r.sendGameView(player)
+	}
 }
 
 func (r *Room) UnregisterClient(client *Client) {
@@ -353,21 +359,24 @@ func (r *Room) UnregisterPlayer(request unregisterPlayerRequest) {
 }
 
 func (r *Room) broadcastGameView() {
-	for _, p := range r.Game.Players {
-		player, ok := r.Players[p.ID]
-		if !ok || player.Client == nil {
-			continue
-		}
-
-		payload, err := json.Marshal(r.Game.view(p))
-		if err != nil {
-			log.Printf("error invalid json from game.view: %v", err)
-			continue
-		}
-
-		r.sendTo(player, Message{Type: "game-state", Payload: payload})
-
+	for _, p := range r.Players {
+		r.sendGameView(p)
 	}
+}
+
+func (r *Room) sendGameView(p *Player) {
+	player, ok := r.Game.playerByID(p.ID)
+	if !ok || p.Client == nil {
+		return
+	}
+
+	payload, err := json.Marshal(r.Game.view(*player))
+	if err != nil {
+		log.Printf("error invalid json from game.view: %v", err)
+		return
+	}
+
+	r.sendTo(p, Message{Type: "game-state", Payload: payload})
 }
 
 type RoomView struct {

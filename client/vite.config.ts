@@ -1,6 +1,7 @@
 import { fileRoutes } from "filesystem-routing/vite";
 import { defineConfig } from "vitest/config";
 import solid from "@solidjs/vite-plugin";
+import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
     // Turnkey client mode: no index.html and no mount file — the plugin
@@ -8,8 +9,7 @@ export default defineConfig({
     // (or a built-in shell). `vite build` prerenders the shell into
     // dist/client/index.html and emits a purely static dist/client.
     plugins: [
-        // `extensions` makes @solidjs/vite-plugin also compile the `?pick=` route
-        // modules the fileRoutes plugin emits (their ids end in a query string).
+        tailwindcss(),
         solid({ start: true, extensions: [".jsx", ".tsx"], diagnostics: true }), // add `ssr: true` for streaming SSR
         fileRoutes({ types: true }),
     ],

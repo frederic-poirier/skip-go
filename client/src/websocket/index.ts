@@ -7,20 +7,20 @@ export type PlayerView = {
 };
 
 export type GameState = {
-    buildPiles: number[][4];
-    discardPiles: number[][4];
+    buildPiles: number[][];
+    discardPiles: number[][];
     hand: number[];
     opponents: OpponentView[];
     stockPileCount: number;
-    stockPileCard: number;
-    isYourTurn: boolean;
+    stockPileTopCard: number;
+    isPlayerTurn: boolean;
 };
 
 type OpponentView = {
-    discardPiles: number[][4];
+    discardPiles: number[][];
     handCount: number;
     playerId: string;
-    stockPileCard: number;
+    stockPileTopCard: number;
     stockPileCount: number;
 };
 
