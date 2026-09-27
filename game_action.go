@@ -202,7 +202,7 @@ func (g *Game) PlayFromDiscard(player *GamePlayer, dpIdx, bpIdx int) error {
 	return nil
 }
 
-func (g *Game) playerByID(id playerID) (player *GamePlayer, ok bool) {
+func (g *Game) playerByID(id PlayerID) (player *GamePlayer, ok bool) {
 	for i := range g.Players {
 		if g.Players[i].ID == id {
 			return &g.Players[i], true
@@ -227,24 +227,6 @@ func (g *Game) score() int {
 		score += len(p.StockPile) * 5
 	}
 	return score
-}
-
-type GameView struct {
-	IsPlayerTurn   bool         `json:"isPlayerTurn"`
-	BuildPiles     BuildPiles   `json:"buildPiles"`
-	DiscardPiles   DiscardPiles `json:"discardPiles"`
-	Hand           Hand         `json:"hand"`
-	StockPileCount int          `json:"stockPileCount"`
-	StockPileCard  Card         `json:"stockPileTopCard"`
-	Opponents      []Opponent   `json:"opponnents"`
-}
-
-type Opponent struct {
-	PlayerID       playerID     `json:"playerId"`
-	HandCount      int          `json:"handCount"`
-	StockPileCount int          `json:"stockPileCount"`
-	StockPileCard  Card         `json:"stockPileCard"`
-	DiscardPiles   DiscardPiles `json:"discardPiles"`
 }
 
 func (g *Game) view(p GamePlayer) GameView {
@@ -274,47 +256,21 @@ func (g *Game) view(p GamePlayer) GameView {
 	return gv
 }
 
-type PlayFromDiscardPayload struct {
-	DiscardPileIdx int `json:"discardPileIdx"`
-	BuildPileIdx   int `json:"buildPileIdx"`
-}
-
-type PlayFromStockPayload struct {
-	BuildPileIdx int `json:"buildPileIdx"`
-}
-
-type PlayFromHandPayload struct {
-	CardIdx      int `json:"cardIdx"`
-	BuildPileIdx int `json:"buildPileIdx"`
-}
-
-type DiscardPayload struct {
-	CardIdx        int `json:"cardIdx"`
-	DiscardPileIdx int `json:"discardPileIdx"`
-}
-
-const (
-	ActionPlayFromHand    = "playFromHand"
-	ActionPlayFromStock   = "playFromStock"
-	ActionPlayFromDiscard = "playFromDiscard"
-	ActionDiscard         = "discard"
-)
-
 var (
 	ErrNotPlayerTurn   = errors.New("is not player's turn")
 	ErrMsgTypeNotFound = errors.New("msg type could not be found")
 )
 
-func GameActionRouter(g *Game, player *Player, action string, payload json.RawMessage) error {
+func GameActionRouter(g *Game, player *Player, messageType ClientMessageType, messagePayload json.RawMessage) error {
 	gamePlayer := g.findPlayerTurn()
 	if gamePlayer.ID != player.ID {
 		return ErrNotPlayerTurn
 	}
 
-	switch action {
-	case ActionPlayFromHand:
+	switch messageType {
+	case ClientMessageTypeGamePlayFromHand:
 		p := PlayFromHandPayload{}
-		if err := json.Unmarshal(payload, &p); err != nil {
+		if err := json.Unmarshal(messagePayload, &p); err != nil {
 			return err
 		}
 		if err := g.PlayFromHand(gamePlayer, p.CardIdx, p.BuildPileIdx); err != nil {
@@ -325,16 +281,16 @@ func GameActionRouter(g *Game, player *Player, action string, payload json.RawMe
 		}
 		return nil
 
-	case ActionPlayFromDiscard:
+	case ClientMessageTypeGamePlayFromDiscard:
 		p := PlayFromDiscardPayload{}
-		if err := json.Unmarshal(payload, &p); err != nil {
+		if err := json.Unmarshal(messagePayload, &p); err != nil {
 			return err
 		}
 		return g.PlayFromDiscard(gamePlayer, p.DiscardPileIdx, p.BuildPileIdx)
 
-	case ActionPlayFromStock:
+	case ClientMessageTypeGamePlayFromStock:
 		p := PlayFromStockPayload{}
-		if err := json.Unmarshal(payload, &p); err != nil {
+		if err := json.Unmarshal(messagePayload, &p); err != nil {
 			return err
 		}
 		if err := g.PlayFromStock(gamePlayer, p.BuildPileIdx); err != nil {
@@ -346,9 +302,9 @@ func GameActionRouter(g *Game, player *Player, action string, payload json.RawMe
 		}
 		return nil
 
-	case ActionDiscard:
+	case ClientMessageTypeGameDiscard:
 		p := DiscardPayload{}
-		if err := json.Unmarshal(payload, &p); err != nil {
+		if err := json.Unmarshal(messagePayload, &p); err != nil {
 			return err
 		}
 		if err := g.Discard(gamePlayer, p.CardIdx, p.DiscardPileIdx); err != nil {

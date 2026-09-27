@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"log"
 	"net/http"
 
 	"github.com/gorilla/websocket"
@@ -13,8 +12,6 @@ var upgrader = websocket.Upgrader{}
 
 func main() {
 	h := NewHub()
-	go h.run()
-
 	e := echo.New()
 
 	e.POST("/room/create", func(c *echo.Context) error {
@@ -23,15 +20,17 @@ func main() {
 			return err
 		}
 
-		PlayerID := playerID(cookie.Value)
-		if len(PlayerID) == 0 {
+		id := PlayerID(cookie.Value)
+		if len(id) == 0 {
 			return errors.New("invalid id")
 		}
 
-		room := h.NewRoom()
-		log.Printf("new room running")
-		go room.run()
+		room, err := h.NewRoom(id)
+		if err != nil {
+			return err
+		}
 
+		go room.run()
 		return c.JSON(http.StatusOK, map[string]string{"roomID": string(room.ID)})
 	})
 
@@ -41,28 +40,33 @@ func main() {
 			return err
 		}
 
-		playerID := playerID(cookie.Value)
+		playerID := PlayerID(cookie.Value)
 		if playerID == "" {
 			return errors.New("invalid id")
 		}
 
-		roomID := roomID(c.Param("id"))
+		roomID := RoomID(c.Param("id"))
 		if roomID == "" {
 			return errors.New("invalid roomID")
 		}
 
-		room := h.getRoom(roomID)
-		if room == nil {
-			return errors.New("could not find the room")
-		}
-
-		conn, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
+		wasConnected, err := h.Join(playerID, roomID)
 		if err != nil {
 			return err
 		}
 
-		log.Printf("New connection %v in room %v", playerID, roomID)
-		client := room.NewClient(playerID, conn)
+		conn, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
+		if err != nil {
+			if !wasConnected {
+				h.RemovePlayer(playerID)
+			}
+			return err
+		}
+
+		client, err := h.Attach(playerID, conn)
+		if err != nil {
+			return err
+		}
 		go client.readPump()
 		go client.writePump()
 

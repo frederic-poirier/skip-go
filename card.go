@@ -6,13 +6,8 @@ import (
 )
 
 type (
-	DiscardPiles [4]Pile
-	BuildPiles   [4]Pile
-	StockPile    Pile
-	Pile         []Card
-	Deck         []Card
-	Hand         []Card
-	Card         int
+	StockPile Pile
+	Deck      []Card
 )
 
 var SkipBo Card = 0

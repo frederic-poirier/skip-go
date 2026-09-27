@@ -1,0 +1,9 @@
+packages:
+  - path: "skip-go"
+    include_files:
+      - "types.go"
+    output_path: "client/src/websocket/generated.ts"
+    enum_style: union
+    fallback_type: "unknown"
+    type_mappings:
+      encoding/json.RawMessage: "unknown"

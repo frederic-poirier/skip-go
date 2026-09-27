@@ -10,7 +10,6 @@ export default function Home() {
 
         if (!response.ok) return;
         const data = await response.json();
-        console.log(data);
         setRoomId(data.roomID);
     }
 

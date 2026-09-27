@@ -1,59 +1,29 @@
-import { createSignal, onSettled } from "solid-js";
+import { Accessor, createSignal, onSettled } from "solid-js";
+import { ClientMessage, ServerMessage } from "./messages";
+import {
+    GameView,
+    RoomView,
+    ServerMessageTypeGameState,
+    ServerMessageTypeRoomState,
+} from "./generated";
 
-export type PlayerView = {
-    id: string;
-    score: number;
-    connected: boolean;
+export type RoomSocket = {
+    connectionState: Accessor<boolean>;
+    roomState: Accessor<RoomView | undefined>;
+    gameState: Accessor<GameView | undefined>;
+    error: Accessor<string | undefined>;
+    send: (msg: ClientMessage) => void;
+    close: () => void;
 };
 
-export type GameState = {
-    buildPiles: number[][];
-    discardPiles: number[][];
-    hand: number[];
-    opponents: OpponentView[];
-    stockPileCount: number;
-    stockPileTopCard: number;
-    isPlayerTurn: boolean;
-};
-
-type OpponentView = {
-    discardPiles: number[][];
-    handCount: number;
-    playerId: string;
-    stockPileTopCard: number;
-    stockPileCount: number;
-};
-
-export type RoomState = {
-    roomId: string;
-    id: string;
-    isHost: boolean;
-    players: PlayerView[];
-    game: GameState | null;
-};
-
-type RoomViewPayload = {
-    roomId: string;
-    id: string;
-    isHost: boolean;
-    players?: PlayerView[];
-};
-
-type ServerMessage =
-    | { type: "room-state"; payload: RoomViewPayload }
-    | { type: "game-state"; payload: GameState };
-
-export type OutgoingMessage = {
-    type: string;
-    payload?: unknown;
-};
-
-export function createRoomSocket(roomId: string) {
+export function createRoomSocket(roomId: string): RoomSocket {
     const [connectionState, setConnectionState] = createSignal(false);
-    const [roomState, setRoomState] = createSignal<RoomState | undefined>();
+    const [roomState, setRoomState] = createSignal<RoomView | undefined>();
+    const [gameState, setGameState] = createSignal<GameView | undefined>();
+    const [error, setError] = createSignal<string | undefined>();
     let ws: WebSocket | undefined;
 
-    function send(msg: OutgoingMessage) {
+    function send(msg: ClientMessage) {
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
         ws.send(JSON.stringify(msg));
     }
@@ -63,33 +33,23 @@ export function createRoomSocket(roomId: string) {
         ws = undefined;
     }
 
-    onSettled(() => {
-        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        ws = new WebSocket(`${protocol}//${location.host}/room/${roomId}`);
-        ws.onopen = () => setConnectionState(true);
-        ws.onclose = () => {
-            setConnectionState(false);
-            setRoomState(undefined);
-            ws = undefined;
-        };
-        ws.onmessage = (e) => {
-            const msg = JSON.parse(e.data as string) as ServerMessage;
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    ws = new WebSocket(`${protocol}//${location.host}/room/${roomId}`);
+    ws.onopen = () => setConnectionState(true);
 
-            if (msg.type === "room-state") {
-                setRoomState((prev) => ({
-                    ...msg.payload,
-                    players: msg.payload.players ?? [],
-                    game: prev?.game ?? null,
-                }));
-                return;
-            }
+    ws.onclose = (e) => {
+        setConnectionState(false);
+        setRoomState(undefined);
+        if (e.code !== 1000) setError(`connection lost [code ${e.code}]`);
+        ws = undefined;
+    };
 
-            if (msg.type === "game-state") {
-                setRoomState((prev) => (prev ? { ...prev, game: msg.payload } : prev));
-            }
-        };
-        return () => close();
-    });
+    ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data) as ServerMessage;
+        if (msg.type == ServerMessageTypeGameState) setGameState(msg.payload);
+        else if (msg.type == ServerMessageTypeRoomState) setRoomState(msg.payload);
+        else console.warn("unknown message type", msg);
+    };
 
-    return { connectionState, roomState, send, close };
+    return { connectionState, roomState, gameState, error, send, close };
 }
