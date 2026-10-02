@@ -25,7 +25,7 @@ func main() {
 			return errors.New("invalid id")
 		}
 
-		room, err := h.NewRoom(id)
+		room, err := h.CreateRoom(id)
 		if err != nil {
 			return err
 		}
@@ -50,7 +50,7 @@ func main() {
 			return errors.New("invalid roomID")
 		}
 
-		wasConnected, err := h.Join(playerID, roomID)
+		wasConnected, err := h.AssignPlayer(playerID, roomID)
 		if err != nil {
 			return err
 		}
@@ -67,9 +67,9 @@ func main() {
 		if err != nil {
 			return err
 		}
+
 		go client.readPump()
 		go client.writePump()
-
 		return nil
 	})
 

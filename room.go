@@ -2,11 +2,21 @@ package main
 
 import (
 	"errors"
+	"log"
 	"math/rand"
 	"strings"
+	"sync"
 	"time"
+)
 
-	"github.com/gorilla/websocket"
+var (
+	ERR_REGISTER_ROOM_FULL    = errors.New("room cannot register the player, the room is currently full")
+	ERR_REGISTER_ROOM_IN_GAME = errors.New("room cannot register the player, the room is currently in game")
+)
+
+const (
+	DISCONNECT_TIMEOUT = time.Second * 30
+	EMPTY_ROOM_TIMEOUT = time.Second * 30
 )
 
 type Room struct {
@@ -18,21 +28,16 @@ type Room struct {
 	Game    *Game
 
 	Commands         chan Command
-	registerPlayer   chan RegisterPlayerRequest
-	registerClient   chan *Client
+	register         chan *Client
 	unregisterClient chan *Client
-	unregisterPlayer chan unregisterPlayerRequest
+	checkPlayer      chan PlayerID
 	checkEmpty       chan struct{}
+	state            openState
 }
 
-type RegisterPlayerRequest struct {
-	ID    PlayerID
-	Reply chan error
-}
-
-type unregisterPlayerRequest struct {
-	playerID PlayerID
-	force    bool
+type openState struct {
+	isOpen bool
+	mu     sync.Mutex
 }
 
 type Command struct {
@@ -46,13 +51,6 @@ type Player struct {
 	DisconnectedAt time.Time
 	Score          int
 	Client         *Client
-}
-
-type Client struct {
-	conn     *websocket.Conn
-	send     chan ServerMessage
-	playerID PlayerID
-	room     *Room
 }
 
 type Game struct {
@@ -72,6 +70,21 @@ type GamePlayer struct {
 	DiscardPiles DiscardPiles
 }
 
+func NewRoom(hub *Hub, id RoomID) *Room {
+	return &Room{
+		Hub:              hub,
+		ID:               id,
+		Players:          make(map[PlayerID]*Player),
+		EmptyAt:          time.Now(),
+		Commands:         make(chan Command, 16),
+		register:         make(chan *Client, 4),
+		unregisterClient: make(chan *Client, 4),
+		checkPlayer:      make(chan PlayerID, 4),
+		checkEmpty:       make(chan struct{}, 4),
+		state:            openState{isOpen: true},
+	}
+}
+
 func generateRoomID() RoomID {
 	const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, 6)
@@ -86,30 +99,70 @@ func (r *Room) run() {
 		select {
 		case command := <-r.Commands:
 			r.Handle(command)
-		case request := <-r.registerPlayer:
-			r.RegisterPlayer(request)
-		case client := <-r.registerClient:
-			r.RegisterClient(client)
+		case client := <-r.register:
+			r.Register(client)
 		case client := <-r.unregisterClient:
 			r.UnregisterClient(client)
-		case request := <-r.unregisterPlayer:
-			r.UnregisterPlayer(request)
+		case id := <-r.checkPlayer:
+			r.checkDisconnectPlayer(id)
 		case <-r.checkEmpty:
 			r.checkEmptyRoom()
 		}
 	}
 }
 
+var (
+	ERR_ROOM_COMMAND_BUFFER_FULL = errors.New("the room command buffer is currently full")
+	ERR_ROOM_CLOSE               = errors.New("the room is close")
+)
+
+func (r *Room) send(cmd Command) error {
+	r.state.mu.Lock()
+	defer r.state.mu.Unlock()
+
+	if !r.state.isOpen {
+		return ERR_ROOM_CLOSE
+	}
+
+	select {
+	case r.Commands <- cmd:
+		return nil
+	default:
+		return ERR_ROOM_COMMAND_BUFFER_FULL
+	}
+}
+
 func (r *Room) checkEmptyRoom() {
+	r.state.mu.Lock()
+	defer r.state.mu.Unlock()
+
+	if !r.state.isOpen {
+		return
+	}
+
 	if r.EmptyAt.IsZero() {
 		return
 	}
 
-	if time.Now().Before(r.EmptyAt.Add(30 * time.Second)) {
+	if time.Now().Before(r.EmptyAt.Add(EMPTY_ROOM_TIMEOUT)) {
 		return
 	}
 
+	r.state.isOpen = false
 	r.Hub.RemoveRoom(r.ID)
+}
+
+func (r *Room) checkDisconnectPlayer(playerID PlayerID) {
+	player, ok := r.Players[playerID]
+	if !ok {
+		return
+	}
+
+	if player.Client != nil || !time.Now().Before(player.DisconnectedAt.Add(DISCONNECT_TIMEOUT)) {
+		return
+	}
+
+	r.UnregisterPlayer(playerID)
 }
 
 func (r *Room) Broadcast(msg ServerMessage) {
@@ -118,44 +171,43 @@ func (r *Room) Broadcast(msg ServerMessage) {
 	}
 }
 
-func (r *Room) RegisterPlayer(request RegisterPlayerRequest) {
-	if _, ok := r.Players[request.ID]; ok {
-		request.Reply <- nil
+func (r *Room) Register(client *Client) {
+	if player, exist := r.Players[client.playerID]; exist {
+		if player.Client != nil {
+			r.UnregisterClient(player.Client)
+		}
+
+		player.Client = client
+		player.DisconnectedAt = time.Time{}
+		r.sendRoomView(player)
+		r.sendGameView(player)
 		return
 	}
 
 	if r.Game != nil {
-		request.Reply <- errors.New("could not register the player in the room, the game is already started")
+		r.Hub.RemovePlayer(client.playerID)
+		client.trySend(errorMessage(ERR_REGISTER_ROOM_IN_GAME))
+		r.UnregisterClient(client)
 		return
 	}
 
-	if len(r.Players) == 6 {
-		request.Reply <- errors.New("could not register the player in the room, the room is already full")
+	if len(r.Players) >= 6 {
+		r.Hub.RemovePlayer(client.playerID)
+		client.trySend(errorMessage(ERR_REGISTER_ROOM_FULL))
+		r.UnregisterClient(client)
 		return
 	}
 
-	r.Players[request.ID] = &Player{
-		ID:        request.ID,
-		CreatedAt: time.Now(),
-		Score:     0,
-		Client:    nil,
+	player := &Player{
+		ID:             client.playerID,
+		CreatedAt:      time.Now(),
+		DisconnectedAt: time.Time{},
+		Score:          0,
+		Client:         client,
 	}
 
-	request.Reply <- nil
-}
-
-func (r *Room) RegisterClient(client *Client) {
-	player := r.Players[client.playerID]
-	if player.Client != nil {
-		player.Client.conn.Close()
-	}
-
-	player.Client = client
+	r.Players[client.playerID] = player
 	r.broadcastRoomView()
-
-	if r.Game != nil {
-		r.broadcastGameView()
-	}
 }
 
 func (r *Room) sendTo(player *Player, msg ServerMessage) {
@@ -163,64 +215,51 @@ func (r *Room) sendTo(player *Player, msg ServerMessage) {
 		return
 	}
 
-	select {
-	case player.Client.send <- msg:
-	default:
-		player.Client.conn.Close()
-		player.Client = nil
+	err := player.Client.trySend(msg)
+	if err == ERR_CLIENT_BUFFER_FULL {
+		r.UnregisterClient(player.Client)
 	}
 }
 
+// shutdown the client, if this client is still
+// attach to the player, remove it and set it as
+// disconnected, send in 30 second a request to
+// remove the player if still disconnected.
 func (r *Room) UnregisterClient(client *Client) {
-	for _, v := range r.Players {
-		if v.Client == client {
-			v.Client.conn.Close()
-			v.Client = nil
-			v.DisconnectedAt = time.Now()
+	client.shutdown()
 
-			id := v.ID
-			time.AfterFunc(30*time.Second, func() {
-				r.unregisterPlayer <- unregisterPlayerRequest{
-					playerID: id,
-					force:    false,
-				}
-			})
-		}
+	player, exist := r.Players[client.playerID]
+	if !exist || player.Client != client {
+		return
 	}
+
+	player.Client = nil
+	player.DisconnectedAt = time.Now()
+
+	time.AfterFunc(DISCONNECT_TIMEOUT, func() {
+		r.checkPlayer <- client.playerID
+	})
 
 	r.broadcastRoomView()
 }
 
-func (r *Room) UnregisterPlayer(request unregisterPlayerRequest) {
-	id := request.playerID
-	p, ok := r.Players[id]
-	if !ok {
+func (r *Room) UnregisterPlayer(playerID PlayerID) {
+	if _, ok := r.Players[playerID]; !ok {
 		return // joueur inconnu, rien est fait.
 	}
 
-	if !request.force {
-		hasClient := p.Client != nil
-		notTimedOut := time.Now().Before(p.DisconnectedAt.Add(30 * time.Second))
-		if hasClient || notTimedOut {
-			return
-		}
-	}
-
-	delete(r.Players, id)
-	r.Hub.RemovePlayer(id)
+	delete(r.Players, playerID)
+	r.Hub.RemovePlayer(playerID)
 
 	if len(r.Players) == 0 {
 		r.EmptyAt = time.Now()
-		time.AfterFunc(30*time.Second, func() {
-			if !time.Now().Before(r.EmptyAt.Add(30 * time.Second)) {
-				r.checkEmpty <- struct{}{}
-			}
+		time.AfterFunc(EMPTY_ROOM_TIMEOUT, func() {
+			r.checkEmpty <- struct{}{}
 		})
-		// si la salle est vide donc rien a broadcast.
 		return
 	}
 
-	if r.HostID != id {
+	if r.HostID != playerID {
 		r.broadcastRoomView()
 		return
 	}
@@ -228,6 +267,7 @@ func (r *Room) UnregisterPlayer(request unregisterPlayerRequest) {
 	var oldestPlayerID PlayerID
 	var oldest time.Time
 	for id, p := range r.Players {
+		log.Println(id)
 		if oldestPlayerID == "" || p.CreatedAt.Before(oldest) {
 			oldestPlayerID = id
 			oldest = p.CreatedAt
@@ -251,8 +291,12 @@ func (r *Room) broadcastRoomView() {
 }
 
 func (r *Room) sendGameView(p *Player) {
+	if r.Game == nil {
+		return
+	}
+
 	player, ok := r.Game.playerByID(p.ID)
-	if !ok || p.Client == nil {
+	if !ok {
 		return
 	}
 
@@ -263,7 +307,7 @@ func (r *Room) sendGameView(p *Player) {
 }
 
 func (r *Room) sendRoomView(player *Player) {
-	players := make([]PlayerView, 0, len(r.Players))
+	players := make([]PlayerView, len(r.Players))
 	for _, otherPlayer := range r.Players {
 		if otherPlayer.ID == player.ID {
 			continue

@@ -4,11 +4,9 @@ export default function Home() {
     const [roomId, setRoomId] = createSignal("");
 
     async function create() {
-        const response = await fetch(`/room/create`, {
-            method: "POST",
-        });
-
+        const response = await fetch(`/room/create`, { method: "POST" });
         if (!response.ok) return;
+
         const data = await response.json();
         setRoomId(data.roomID);
     }
